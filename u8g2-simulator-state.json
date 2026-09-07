@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "W": 128,
+  "H": 64,
+  "text": "160",
+  "lineGap": "2",
+  "topMargin": "0",
+  "grid": true,
+  "border": false,
+  "font": "u8g2_font_logisoso24_tn",
+  "shapes": [
+    {
+      "type": "text",
+      "p0": 64,
+      "p1": 41,
+      "p2": 0,
+      "p3": 0,
+      "text": "Speed",
+      "font": "u8g2_font_logisoso24_tn"
+    },
+    {
+      "type": "line",
+      "p0": 0,
+      "p1": 12,
+      "p2": 128,
+      "p3": 12
+    },
+    {
+      "type": "line",
+      "p0": 0,
+      "p1": 46,
+      "p2": 128,
+      "p3": 46
+    }
+  ],
+  "manualOverrides": []
+}

@@ -164,7 +164,7 @@
 <div class="cards">
 
   <div class="card">
-    <div class="card-title">Screen &amp; text</div>
+    <div class="card-title">Screen</div>
 
     <div>
       <label>Display size</label>
@@ -184,40 +184,23 @@
       </select>
     </div>
 
-    <div>
-      <label>Text to show</label>
-      <textarea id="txt">Hello u8g2!</textarea>
-    </div>
-
-    <div class="row">
-      <div>
-        <label>Line spacing (px)</label>
-        <input type="text" id="lineGap" value="2">
-      </div>
-      <div>
-        <label>Top margin (px)</label>
-        <input type="text" id="topMargin" value="0">
-      </div>
-    </div>
-
     <div class="metrics">
-      <span>Font: <b id="mFont">-</b></span>
-    </div>
-    <div class="metrics">
-      <span>Lines: <b id="mLines">-</b></span>
-      <span>Max width: <b id="mWidth">-</b>px</span>
-      <span>Fits: <b id="mFits">-</b></span>
+      <span>Active font (for new objects): <b id="mFont">-</b></span>
     </div>
   </div>
 
   <div class="card">
     <div class="card-title">Fonts (2043 built in)</div>
     <input type="text" id="search" placeholder="Filter fonts by name...">
+    <div class="toggle">
+      <input type="checkbox" id="favOnly">
+      <label style="margin:0">&#9733; Favorites only</label>
+    </div>
     <div style="font-size:10px;color:var(--muted);">
       <span id="matchCount">-</span> fonts match
     </div>
     <div id="fontList" tabindex="0" style="flex:1;min-height:320px;max-height:420px;overflow-y:auto;border:1px solid var(--line);border-radius:3px;background:#0f110b;outline:none;"></div>
-    <div style="font-size:10px;color:var(--muted);">Click a font, or focus this list and use &uarr; / &darr;.</div>
+    <div style="font-size:10px;color:var(--muted);">Click a font, or focus the list and use &uarr; / &darr;. Click &#9734; to favorite.</div>
   </div>
 
   <div class="card">
@@ -2532,19 +2515,87 @@ function getFont(name) {
 }
 
 let activeFontName = U8G2_FONT_NAMES.includes("u8g2_font_6x10_tf") ? "u8g2_font_6x10_tf" : U8G2_FONT_NAMES[0];
+let selectedTextIdx = null; // index into `shapes` of the text object currently "listening" to font-list clicks
+
+// ---------------- favorites ----------------
+let favorites = new Set();
+try {
+  const saved = JSON.parse(localStorage.getItem('u8g2sim_favorites') || '[]');
+  favorites = new Set(saved);
+} catch (e) { favorites = new Set(); }
+
+function persistFavorites() {
+  try { localStorage.setItem('u8g2sim_favorites', JSON.stringify(Array.from(favorites))); }
+  catch (e) { /* ignore (e.g. file:// restrictions) */ }
+}
+
+// ---------------- family grouping ----------------
+const KNOWN_SUFFIXES = new Set(['tr','tf','tn','te','t','mn','mr','mf','me','mu','tu','all','symbol','symbols',
+  'cyrillic','japanese1','japanese2','japanese3','chinese1','chinese2','chinese3',
+  'gb2312','gb2312a','gb2312b','8n','8u','8r','8f','korean1','korean2']);
+
+function familyOf(name) {
+  let core = name.startsWith('u8g2_font_') ? name.slice('u8g2_font_'.length) : name;
+  const parts = core.split('_');
+  let core2 = core;
+  if (parts.length > 1 && KNOWN_SUFFIXES.has(parts[parts.length - 1])) {
+    core2 = parts.slice(0, -1).join('_');
+  }
+  const m = core2.match(/^(.*?)(\d+)$/);
+  let fam;
+  if (m && !/\d+x\d+$/.test(core2)) fam = m[1];
+  else fam = core2;
+  fam = fam.replace(/_+$/, '');
+  return fam || core2;
+}
+
+// shared datalist so each text-object's font field can autocomplete against all fonts
+const fontDatalist = document.createElement('datalist');
+fontDatalist.id = 'fontDatalist';
+fontDatalist.innerHTML = U8G2_FONT_NAMES.map(n => '<option value="' + n + '">').join('');
+document.body.appendChild(fontDatalist);
 
 const fontListEl = document.getElementById('fontList');
 const matchCountEl = document.getElementById('matchCount');
+const favOnlyEl = document.getElementById('favOnly');
 let currentMatches = [];
 
 function buildFontList(filter) {
   const f = filter.trim().toLowerCase();
-  const matches = f ? U8G2_FONT_NAMES.filter(n => n.toLowerCase().includes(f)) : U8G2_FONT_NAMES;
+  let matches = f ? U8G2_FONT_NAMES.filter(n => n.toLowerCase().includes(f)) : U8G2_FONT_NAMES.slice();
+  const favOnly = favOnlyEl && favOnlyEl.checked;
+  if (favOnly) matches = matches.filter(n => favorites.has(n));
+
+  const grouping = !f && !favOnly; // only group when browsing the full unfiltered list
+  if (grouping) {
+    matches = matches.slice().sort((a, b) => {
+      const fa = familyOf(a), fb = familyOf(b);
+      if (fa !== fb) return fa < fb ? -1 : 1;
+      return a < b ? -1 : 1;
+    });
+  }
+
   currentMatches = matches.slice(0, 500);
   fontListEl.innerHTML = '';
+  let lastFamily = null;
   currentMatches.forEach(name => {
+    if (grouping) {
+      const fam = familyOf(name);
+      if (fam !== lastFamily) {
+        lastFamily = fam;
+        const header = document.createElement('div');
+        header.textContent = fam;
+        header.style.padding = '4px 8px';
+        header.style.fontSize = '10px';
+        header.style.letterSpacing = '0.5px';
+        header.style.color = 'var(--accent)';
+        header.style.background = '#161a0e';
+        header.style.position = 'sticky';
+        header.style.top = '0';
+        fontListEl.appendChild(header);
+      }
+    }
     const item = document.createElement('div');
-    item.textContent = name;
     item.dataset.name = name;
     item.style.padding = '5px 8px';
     item.style.fontSize = '11px';
@@ -2553,12 +2604,37 @@ function buildFontList(filter) {
     item.style.whiteSpace = 'nowrap';
     item.style.overflow = 'hidden';
     item.style.textOverflow = 'ellipsis';
+    item.style.display = 'flex';
+    item.style.alignItems = 'center';
+    item.style.gap = '6px';
     if (name === activeFontName) {
       item.style.background = '#161a0e';
       item.style.color = 'var(--accent)';
     }
+
+    const star = document.createElement('span');
+    star.textContent = favorites.has(name) ? '\u2605' : '\u2606';
+    star.style.color = favorites.has(name) ? '#e0c34a' : 'var(--muted)';
+    star.style.cursor = 'pointer';
+    star.style.flex = '0 0 auto';
+    star.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (favorites.has(name)) favorites.delete(name); else favorites.add(name);
+      persistFavorites();
+      buildFontList(document.getElementById('search').value);
+    });
+
+    const label = document.createElement('span');
+    label.textContent = name;
+    label.style.overflow = 'hidden';
+    label.style.textOverflow = 'ellipsis';
+
+    item.appendChild(star);
+    item.appendChild(label);
+
     item.addEventListener('click', () => {
       activeFontName = name;
+      applyFontToSelectedText(name);
       fontListEl.focus();
       buildFontList(document.getElementById('search').value);
       render();
@@ -2569,9 +2645,17 @@ function buildFontList(filter) {
 }
 buildFontList('');
 
+function applyFontToSelectedText(name) {
+  if (selectedTextIdx !== null && shapes[selectedTextIdx] && shapes[selectedTextIdx].type === 'text') {
+    shapes[selectedTextIdx].font = name;
+    renderShapeList();
+  }
+}
+
 document.getElementById('search').addEventListener('input', (e) => {
   buildFontList(e.target.value);
 });
+if (favOnlyEl) favOnlyEl.addEventListener('change', () => buildFontList(document.getElementById('search').value));
 
 fontListEl.addEventListener('keydown', (e) => {
   if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
@@ -2582,8 +2666,9 @@ fontListEl.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowDown') idx = Math.min(idx + 1, currentMatches.length - 1);
   else idx = Math.max(idx - 1, 0);
   activeFontName = currentMatches[idx];
+  applyFontToSelectedText(activeFontName);
   buildFontList(document.getElementById('search').value);
-  const activeItem = fontListEl.children[idx];
+  const activeItem = fontListEl.querySelector('[data-name="' + activeFontName.replace(/"/g, '\\"') + '"]');
   if (activeItem) activeItem.scrollIntoView({ block: 'nearest' });
   render();
 });
@@ -2625,32 +2710,6 @@ function describeShape(s) {
   return s.type + '(' + parts.join(', ') + ')';
 }
 
-function startEditingText(idx, row, span) {
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.value = shapes[idx].text;
-  input.style.flex = '1';
-  input.style.fontSize = '11px';
-  input.style.padding = '2px 4px';
-  input.style.background = '#161a0e';
-  input.style.border = '1px solid var(--accent)';
-  input.style.color = 'var(--text)';
-  input.style.borderRadius = '3px';
-  row.replaceChild(input, span);
-  input.focus();
-  input.select();
-  const commit = () => {
-    shapes[idx].text = input.value || '';
-    renderShapeList();
-    render();
-  };
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { commit(); }
-    if (e.key === 'Escape') { renderShapeList(); }
-  });
-  input.addEventListener('blur', commit);
-}
-
 function renderShapeList() {
   const listEl = document.getElementById('shapeList');
   listEl.innerHTML = '';
@@ -2661,22 +2720,11 @@ function renderShapeList() {
     row.style.alignItems = 'center';
     row.style.fontSize = '11px';
     row.style.background = '#0f110b';
-    row.style.border = '1px solid var(--line)';
+    row.style.border = (s.type === 'text' && idx === selectedTextIdx) ? '1px solid var(--accent)' : '1px solid var(--line)';
     row.style.borderRadius = '3px';
     row.style.padding = '4px 6px';
-    row.style.gap = '6px';
-
-    const span = document.createElement('span');
-    span.textContent = describeShape(s);
-    span.style.flex = '1';
-    span.style.overflow = 'hidden';
-    span.style.textOverflow = 'ellipsis';
-    span.style.whiteSpace = 'nowrap';
-    if (s.type === 'text') {
-      span.title = 'Click to edit text';
-      span.style.cursor = 'text';
-      span.addEventListener('click', () => startEditingText(idx, row, span));
-    }
+    row.style.gap = '4px';
+    row.style.flexWrap = 'wrap';
 
     const btnStyle = (btn, color) => {
       btn.style.background = 'transparent';
@@ -2686,6 +2734,62 @@ function renderShapeList() {
       btn.style.fontSize = '13px';
       btn.style.padding = '0 3px';
     };
+    const miniInput = (value, width) => {
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.value = value;
+      inp.style.width = width;
+      inp.style.fontSize = '11px';
+      inp.style.padding = '3px 4px';
+      inp.style.background = '#161a0e';
+      inp.style.border = '1px solid var(--line)';
+      inp.style.color = 'var(--text)';
+      inp.style.borderRadius = '3px';
+      return inp;
+    };
+
+    if (s.type === 'text') {
+      const textInput = miniInput(s.text, '86px');
+      textInput.style.flex = '1';
+      textInput.title = 'Sentence';
+      textInput.addEventListener('input', () => { s.text = textInput.value; render(); });
+
+      const xInput = miniInput(s.p0, '36px');
+      xInput.title = 'x';
+      xInput.addEventListener('input', () => { s.p0 = parseInt(xInput.value || '0', 10); render(); });
+
+      const yInput = miniInput(s.p1, '36px');
+      yInput.title = 'y';
+      yInput.addEventListener('input', () => { s.p1 = parseInt(yInput.value || '0', 10); render(); });
+
+      const fontInput = miniInput(s.font, '120px');
+      fontInput.setAttribute('list', 'fontDatalist');
+      fontInput.title = 'Font (type to search, or select this object then click a font in the Fonts list)';
+      fontInput.addEventListener('input', () => {
+        if (U8G2_FONT_DATA[fontInput.value]) { s.font = fontInput.value; render(); }
+      });
+
+      // clicking into any field of this row "selects" it: font-list clicks then target this object
+      [textInput, xInput, yInput, fontInput].forEach(inp => {
+        inp.addEventListener('focus', () => {
+          selectedTextIdx = idx;
+          row.style.border = '1px solid var(--accent)';
+        });
+      });
+
+      row.appendChild(textInput);
+      row.appendChild(xInput);
+      row.appendChild(yInput);
+      row.appendChild(fontInput);
+    } else {
+      const span = document.createElement('span');
+      span.textContent = describeShape(s);
+      span.style.flex = '1';
+      span.style.overflow = 'hidden';
+      span.style.textOverflow = 'ellipsis';
+      span.style.whiteSpace = 'nowrap';
+      row.appendChild(span);
+    }
 
     const upBtn = document.createElement('button');
     upBtn.textContent = '\u25b2';
@@ -2695,6 +2799,7 @@ function renderShapeList() {
     upBtn.onclick = () => {
       if (idx === 0) return;
       [shapes[idx - 1], shapes[idx]] = [shapes[idx], shapes[idx - 1]];
+      selectedTextIdx = null;
       renderShapeList(); render();
     };
 
@@ -2706,6 +2811,7 @@ function renderShapeList() {
     downBtn.onclick = () => {
       if (idx === shapes.length - 1) return;
       [shapes[idx + 1], shapes[idx]] = [shapes[idx], shapes[idx + 1]];
+      selectedTextIdx = null;
       renderShapeList(); render();
     };
 
@@ -2713,9 +2819,8 @@ function renderShapeList() {
     delBtn.textContent = '\u00d7';
     btnStyle(delBtn, '#c85a3f');
     delBtn.style.fontSize = '14px';
-    delBtn.onclick = () => { shapes.splice(idx, 1); renderShapeList(); render(); };
+    delBtn.onclick = () => { shapes.splice(idx, 1); selectedTextIdx = null; renderShapeList(); render(); };
 
-    row.appendChild(span);
     row.appendChild(upBtn);
     row.appendChild(downBtn);
     row.appendChild(delBtn);
@@ -2879,25 +2984,10 @@ document.getElementById('preset').addEventListener('change', (e) => {
 
 // ---------------- main render ----------------
 function render() {
-  const font = getFont(activeFontName);
-  const text = document.getElementById('txt').value || '';
-  const lineGap = parseInt(document.getElementById('lineGap').value || '2', 10);
-  const topMargin = parseInt(document.getElementById('topMargin').value || '0', 10);
   const showGrid = document.getElementById('grid').checked;
   const showBorder = document.getElementById('border').checked;
 
   const buf = new Uint8Array(W * H);
-  const setPixel = (x, y) => { if (x >= 0 && x < W && y >= 0 && y < H) buf[y * W + x] = 1; };
-
-  const lines = text.split('\n');
-  const lineHeight = (font.ascent_A - font.descent_g) + lineGap;
-  let maxWidth = 0;
-  lines.forEach(l => { const w = font.getStringWidth(l); if (w > maxWidth) maxWidth = w; });
-
-  lines.forEach((line, idx) => {
-    const baselineY = topMargin + font.ascent_A + idx * lineHeight;
-    font.renderLine(line, 0, baselineY, setPixel);
-  });
 
   shapes.forEach(s => drawShape(buf, s));
 
@@ -2931,27 +3021,20 @@ function render() {
   }
 
   document.getElementById('mFont').textContent = activeFontName;
-  document.getElementById('mLines').textContent = lines.length;
-  document.getElementById('mWidth').textContent = Math.round(maxWidth);
-  const lastLineBottom = topMargin + font.ascent_A + (lines.length - 1) * lineHeight - font.descent_g;
-  const fits = maxWidth <= W && lastLineBottom <= H;
-  document.getElementById('mFits').textContent = fits ? 'YES' : 'NO';
-  document.getElementById('mFits').style.color = fits ? '#8fbf3f' : '#c85a3f';
+
+  autosave();
 }
 
-['txt', 'lineGap', 'topMargin', 'grid', 'border'].forEach(id => {
+['grid', 'border'].forEach(id => {
   document.getElementById(id).addEventListener('input', render);
   document.getElementById(id).addEventListener('change', render);
 });
 
-// ---------------- save / load page state ----------------
+// ---------------- save / load workstation state ----------------
 function collectState() {
   return {
-    version: 1,
+    version: 2,
     W, H,
-    text: document.getElementById('txt').value,
-    lineGap: document.getElementById('lineGap').value,
-    topMargin: document.getElementById('topMargin').value,
     grid: document.getElementById('grid').checked,
     border: document.getElementById('border').checked,
     font: activeFontName,
@@ -2965,19 +3048,22 @@ function applyState(state) {
   H = state.H || H;
   document.getElementById('lcdW').value = W;
   document.getElementById('lcdH').value = H;
-  document.getElementById('txt').value = state.text || '';
-  document.getElementById('lineGap').value = state.lineGap != null ? state.lineGap : 2;
-  document.getElementById('topMargin').value = state.topMargin != null ? state.topMargin : 0;
   document.getElementById('grid').checked = !!state.grid;
   document.getElementById('border').checked = !!state.border;
   if (state.font && U8G2_FONT_DATA[state.font]) activeFontName = state.font;
   shapes = Array.isArray(state.shapes) ? state.shapes : [];
   manualOverrides = new Map(Array.isArray(state.manualOverrides) ? state.manualOverrides : []);
+  selectedTextIdx = null;
 
   resizeCanvas();
   renderShapeList();
   buildFontList(document.getElementById('search').value);
   render();
+}
+
+function autosave() {
+  try { localStorage.setItem('u8g2sim_workstate', JSON.stringify(collectState())); }
+  catch (e) { /* ignore, e.g. file:// restrictions */ }
 }
 
 document.getElementById('saveBtn').addEventListener('click', () => {
@@ -3013,7 +3099,14 @@ loadFileInput.addEventListener('change', (e) => {
   loadFileInput.value = '';
 });
 
-render();
+// ---------------- initial load: restore autosaved workstation if present ----------------
+(function initialLoad() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('u8g2sim_workstate'));
+    if (saved) { applyState(saved); return; }
+  } catch (e) { /* ignore */ }
+  render();
+})();
 </script>
 </body>
 </html>
