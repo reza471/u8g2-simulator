@@ -7,7 +7,7 @@ font bitmaps** — not approximations.
 Built for testing [u8g2](https://github.com/olikraus/u8g2) fonts before
 flashing them to real hardware (Arduino, ESP32, STM32, etc.).
 
-![screen preview placeholder](docs/screenshot.png)
+![screen preview placeholder](Docs/screenshot.png)
 
 ## Why
 
