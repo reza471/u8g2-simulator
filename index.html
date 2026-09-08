@@ -321,9 +321,14 @@
     </div>
     <div class="toggle">
       <input type="checkbox" id="pixelMode">
-      <label style="margin:0">Draw pixels on click</label>
+      <label style="margin:0" title="When off, click-and-drag on the screen moves objects instead">Draw pixels on click</label>
     </div>
     <button id="clearPixelsBtn" class="fontbtn" style="text-align:center;">Clear manual pixels</button>
+
+    <div class="row" style="margin-top:6px;">
+      <button id="undoBtn" class="fontbtn" style="text-align:center;" title="Ctrl+Z">&#8634; Undo</button>
+      <button id="redoBtn" class="fontbtn" style="text-align:center;" title="Ctrl+Shift+Z / Ctrl+Y">&#8635; Redo</button>
+    </div>
 
     <div class="row" style="margin-top:6px;">
       <button id="saveBtn" class="fontbtn" style="text-align:center;">Save project</button>
@@ -344,6 +349,9 @@
   <br><br>
   The small tag next to each font name (ASCII, Full, Digits, Mono ASCII...)
   tells you at a glance what characters it covers.
+  <br><br>
+  <b>Drag objects directly on the screen</b> &mdash; click and drag any text,
+  line, box, or circle to move it (as long as "Draw pixels on click" is off).
   <br><br>
   <b>What the letters at the end of a font name mean</b> &mdash;
   a name is <code>&lt;family&gt;&lt;size&gt;_&lt;purpose&gt;&lt;charset&gt;</code>:
@@ -2911,12 +2919,14 @@ function switchToPage(idx) {
 }
 
 function addPage() {
+  pushUndo();
   pages.push({ name: 'Page ' + (pages.length + 1), shapes: [], manualOverrides: new Map() });
   switchToPage(pages.length - 1);
 }
 
 function deletePage(idx) {
   if (pages.length <= 1) return; // always keep at least one page
+  pushUndo();
   pages.splice(idx, 1);
   switchToPage(Math.min(idx, pages.length - 1));
 }
@@ -2945,7 +2955,7 @@ function renderPagesList() {
       item.replaceChild(input, nameSpan);
       input.focus();
       input.select();
-      const commit = () => { p.name = input.value || p.name; renderPagesList(); };
+      const commit = () => { pushUndo(); p.name = input.value || p.name; renderPagesList(); };
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') commit();
         if (e.key === 'Escape') renderPagesList();
@@ -3067,6 +3077,7 @@ function renderShapeList() {
       // clicking into any field of this row "selects" it: font-list clicks then target this object
       [textInput, xInput, yInput, fontInput].forEach(inp => {
         inp.addEventListener('focus', () => {
+          pushUndo(); // one undo checkpoint per edit session, not per keystroke
           selectedTextIdx = idx;
           row.style.border = '1px solid var(--accent)';
         });
@@ -3093,6 +3104,7 @@ function renderShapeList() {
     if (upBtn.disabled) upBtn.style.opacity = '0.3';
     upBtn.onclick = () => {
       if (idx === 0) return;
+      pushUndo();
       [shapes[idx - 1], shapes[idx]] = [shapes[idx], shapes[idx - 1]];
       selectedTextIdx = null;
       renderShapeList(); render();
@@ -3105,6 +3117,7 @@ function renderShapeList() {
     if (downBtn.disabled) downBtn.style.opacity = '0.3';
     downBtn.onclick = () => {
       if (idx === shapes.length - 1) return;
+      pushUndo();
       [shapes[idx + 1], shapes[idx]] = [shapes[idx], shapes[idx + 1]];
       selectedTextIdx = null;
       renderShapeList(); render();
@@ -3114,7 +3127,7 @@ function renderShapeList() {
     delBtn.textContent = '\u00d7';
     btnStyle(delBtn, '#c85a3f');
     delBtn.style.fontSize = '14px';
-    delBtn.onclick = () => { shapes.splice(idx, 1); selectedTextIdx = null; renderShapeList(); render(); };
+    delBtn.onclick = () => { pushUndo(); shapes.splice(idx, 1); selectedTextIdx = null; renderShapeList(); render(); };
 
     row.appendChild(upBtn);
     row.appendChild(downBtn);
@@ -3130,10 +3143,12 @@ document.getElementById('addShapeBtn').addEventListener('click', () => {
   if (type === 'text') {
     const text = document.getElementById('objText').value || '';
     if (!text) return;
+    pushUndo();
     shapes.push({ type, p0, p1, p2: 0, p3: 0, text, font: activeFontName });
   } else {
     const p2 = parseInt(document.getElementById('p2').value || '0', 10);
     const p3 = parseInt(document.getElementById('p3').value || '0', 10);
+    pushUndo();
     shapes.push({ type, p0, p1, p2, p3 });
   }
   renderShapeList();
@@ -3230,6 +3245,54 @@ function paintAt(x, y) {
   manualOverrides.set(x + ',' + y, paintValue);
 }
 
+// ---------------- dragging objects with the mouse ----------------
+let draggingIdx = null;
+let dragStartCell = null;
+let dragOrigin = null;
+
+function pointToSegmentDist(px, py, x0, y0, x1, y1) {
+  const dx = x1 - x0, dy = y1 - y0;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - x0, py - y0);
+  let t = ((px - x0) * dx + (py - y0) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x0 + t * dx), py - (y0 + t * dy));
+}
+
+function shapeContainsPoint(s, x, y) {
+  const pad = 1.5; // generous hit padding, in LCD pixels
+  if (s.type === 'text') {
+    const f = getFont(U8G2_FONT_DATA[s.font] ? s.font : activeFontName);
+    const w = f.getStringWidth(s.text);
+    const top = s.p1 - f.ascent_A - pad, bottom = s.p1 - f.descent_g + pad;
+    const left = s.p0 - pad, right = s.p0 + w + pad;
+    return x >= left && x <= right && y >= top && y <= bottom;
+  }
+  if (s.type === 'pixel') {
+    return Math.abs(x - s.p0) <= pad && Math.abs(y - s.p1) <= pad;
+  }
+  if (s.type === 'circle') {
+    const dist = Math.hypot(x - s.p0, y - s.p1);
+    return dist <= s.p2 + pad; // anywhere inside (or on) the circle grabs it
+  }
+  if (s.type === 'line') {
+    return pointToSegmentDist(x, y, s.p0, s.p1, s.p2, s.p3) <= pad + 1;
+  }
+  if (s.type === 'frame' || s.type === 'box') {
+    const xa = Math.min(s.p0, s.p2) - pad, xb = Math.max(s.p0, s.p2) + pad;
+    const ya = Math.min(s.p1, s.p3) - pad, yb = Math.max(s.p1, s.p3) + pad;
+    return x >= xa && x <= xb && y >= ya && y <= yb;
+  }
+  return false;
+}
+
+function hitTestAt(x, y) {
+  for (let i = shapes.length - 1; i >= 0; i--) { // topmost (last-drawn) object first
+    if (shapeContainsPoint(shapes[i], x, y)) return i;
+  }
+  return null;
+}
+
 // ---------------- live mouse coordinate readout ----------------
 const mouseCoordEl = document.getElementById('mouseCoord');
 lcd.addEventListener('mousemove', (e) => {
@@ -3245,32 +3308,94 @@ lcd.addEventListener('mouseleave', () => {
 });
 
 lcd.addEventListener('mousedown', (e) => {
-  if (!document.getElementById('pixelMode').checked) return;
   const { x, y } = canvasToCell(e);
-  if (x < 0 || x >= W || y < 0 || y >= H) return;
-  const current = manualOverrides.has(x + ',' + y)
-    ? manualOverrides.get(x + ',' + y)
-    : (lastAutoBuf ? lastAutoBuf[y * W + x] : 0);
-  paintValue = current ? 0 : 1;
-  isPainting = true;
-  paintAt(x, y);
-  render();
+  const pixelModeOn = document.getElementById('pixelMode').checked;
+
+  if (pixelModeOn) {
+    if (x < 0 || x >= W || y < 0 || y >= H) return;
+    pushUndo(); // one checkpoint per paint stroke, not per pixel
+    const current = manualOverrides.has(x + ',' + y)
+      ? manualOverrides.get(x + ',' + y)
+      : (lastAutoBuf ? lastAutoBuf[y * W + x] : 0);
+    paintValue = current ? 0 : 1;
+    isPainting = true;
+    paintAt(x, y);
+    render();
+    return;
+  }
+
+  // object-drag mode
+  const idx = hitTestAt(x, y);
+  if (idx !== null) {
+    pushUndo(); // one checkpoint per drag, not per mousemove
+    draggingIdx = idx;
+    dragStartCell = { x, y };
+    const s = shapes[idx];
+    dragOrigin = { p0: s.p0, p1: s.p1, p2: s.p2, p3: s.p3 };
+    lcd.style.cursor = 'grabbing';
+    selectedTextIdx = (s.type === 'text') ? idx : selectedTextIdx;
+    renderShapeList();
+  }
 });
+
 window.addEventListener('mousemove', (e) => {
-  if (!isPainting || !document.getElementById('pixelMode').checked) return;
-  const { x, y } = canvasToCell(e);
-  paintAt(x, y);
-  render();
+  const pixelModeOn = document.getElementById('pixelMode').checked;
+
+  if (pixelModeOn) {
+    if (!isPainting) return;
+    const { x, y } = canvasToCell(e);
+    paintAt(x, y);
+    render();
+    return;
+  }
+
+  if (draggingIdx !== null) {
+    const { x, y } = canvasToCell(e);
+    const dx = x - dragStartCell.x, dy = y - dragStartCell.y;
+    const s = shapes[draggingIdx];
+    if (!s) { draggingIdx = null; return; }
+    if (s.type === 'circle' || s.type === 'text' || s.type === 'pixel') {
+      s.p0 = dragOrigin.p0 + dx;
+      s.p1 = dragOrigin.p1 + dy;
+    } else { // line, frame, box — move both endpoints together
+      s.p0 = dragOrigin.p0 + dx;
+      s.p1 = dragOrigin.p1 + dy;
+      s.p2 = dragOrigin.p2 + dx;
+      s.p3 = dragOrigin.p3 + dy;
+    }
+    renderShapeList();
+    render();
+    return;
+  }
+
+  // hover feedback when idle
+  const pointerOverLcd = e.target === lcd;
+  if (pointerOverLcd) {
+    const { x, y } = canvasToCell(e);
+    const hoverIdx = hitTestAt(x, y);
+    lcd.style.cursor = (hoverIdx !== null) ? 'grab' : 'default';
+  }
 });
-window.addEventListener('mouseup', () => { isPainting = false; });
+
+window.addEventListener('mouseup', () => {
+  isPainting = false;
+  if (draggingIdx !== null) {
+    draggingIdx = null;
+    dragStartCell = null;
+    dragOrigin = null;
+    lcd.style.cursor = 'default';
+  }
+});
 
 document.getElementById('clearPixelsBtn').addEventListener('click', () => {
+  pushUndo();
   manualOverrides.clear();
   render();
 });
 
 // ---------------- LCD size controls ----------------
 function applySize(newW, newH) {
+  pushUndo();
   W = Math.max(1, Math.min(400, newW || W));
   H = Math.max(1, Math.min(400, newH || H));
   manualOverrides.clear();
@@ -3392,6 +3517,51 @@ function applyState(state) {
   buildFontList(document.getElementById('search').value);
   render();
 }
+
+// ---------------- undo / redo ----------------
+let undoStack = [];
+let redoStack = [];
+const UNDO_LIMIT = 50;
+
+function pushUndo() {
+  undoStack.push(JSON.stringify(collectState()));
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  redoStack = [];
+}
+
+function undo() {
+  if (undoStack.length === 0) return;
+  const cur = JSON.stringify(collectState());
+  const prev = undoStack.pop();
+  redoStack.push(cur);
+  applyState(JSON.parse(prev));
+}
+
+function redo() {
+  if (redoStack.length === 0) return;
+  const cur = JSON.stringify(collectState());
+  const next = redoStack.pop();
+  undoStack.push(cur);
+  applyState(JSON.parse(next));
+}
+
+document.addEventListener('keydown', (e) => {
+  const mod = e.ctrlKey || e.metaKey;
+  if (!mod) return;
+  const key = e.key.toLowerCase();
+  const tag = (e.target && e.target.tagName || '').toLowerCase();
+  const isEditable = tag === 'input' || tag === 'textarea' || (e.target && e.target.isContentEditable);
+  if (isEditable) return; // let the browser handle native undo/redo inside a focused field
+  if (key === 'z' && !e.shiftKey) {
+    e.preventDefault();
+    undo();
+  } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+    e.preventDefault();
+    redo();
+  }
+});
+document.getElementById('undoBtn').addEventListener('click', undo);
+document.getElementById('redoBtn').addEventListener('click', redo);
 
 function autosave() {
   try { localStorage.setItem('u8g2sim_workstate', JSON.stringify(collectState())); }
