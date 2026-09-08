@@ -215,7 +215,7 @@
   }
   .metrics b{color:var(--text);}
   #fontList:focus{border-color:var(--accent);}
-  #shapeList, #fontList{scrollbar-width:thin;}
+  #shapeList, #fontList, #favList, #pagesList{scrollbar-width:thin; overscroll-behavior:contain;}
 </style>
 </head>
 <body>
@@ -2854,7 +2854,7 @@ function buildFontList(filter) {
     item.addEventListener('click', () => {
       activeFontName = name;
       applyFontToSelectedText(name);
-      fontListEl.focus();
+      fontListEl.focus({ preventScroll: true });
       buildFontList(document.getElementById('search').value);
       render();
     });
@@ -3429,6 +3429,12 @@ loadFileInput.addEventListener('change', (e) => {
   };
   reader.readAsText(file);
   loadFileInput.value = '';
+});
+
+// ---------------- hard stop for scroll chaining (belt-and-suspenders alongside overscroll-behavior CSS) ----------------
+['fontList', 'favList', 'shapeList', 'pagesList'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('wheel', (e) => { e.stopPropagation(); }, { passive: true });
 });
 
 // ---------------- initial load: restore autosaved workstation if present ----------------

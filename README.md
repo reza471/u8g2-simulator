@@ -1,11 +1,12 @@
-# u8g2 Font Simulator
+# u8g2 Studio
 
-A single-file, fully offline HTML tool for laying out text and simple
-graphics on a simulated monochrome LCD (SSD1306-style), using **real u8g2
-font bitmaps** — not approximations.
+A single-file, fully offline HTML tool for designing multi-page screens for
+a simulated monochrome LCD (SSD1306-style), using **real u8g2 font
+bitmaps** — not approximations.
 
-Built for testing [u8g2](https://github.com/olikraus/u8g2) fonts and
-layouts before flashing them to real hardware (Arduino, ESP32, STM32, etc.).
+Built for laying out text, shapes, and pixel art for
+[u8g2](https://github.com/olikraus/u8g2) fonts before flashing real
+hardware (Arduino, ESP32, STM32, etc.).
 
 ![screen preview](Docs/Screenshot.png)
 
@@ -42,13 +43,40 @@ before touching hardware.
   screen to toggle individual pixels, like a tiny bitmap editor.
 - **Autosaving workstation** — every change is saved in your browser as you
   work. Close the tab, reopen the file later, everything is still there.
-- **Save / Load to file** — export the whole workstation (screen size,
-  objects, favorites, manual pixels) to a `.json` file, and reload it later
-  or on another computer.
+- **Multi-page projects** — create several pages, switch between them from
+  a side panel, rename or delete them. Screen size, fonts, and favorites
+  are shared across all pages; each page keeps its own objects and pixels.
+- **Save / Load to file** — export the whole project (all pages, objects,
+  favorites, manual pixels) to a `.json` file, and reload it later or on
+  another computer.
+
+## Font naming convention
+
+A u8g2 font name follows `<family><size>_<purpose><charset>`. Two quick
+examples: `u8g2_font_6x10_tf` and `u8g2_font_ncenB18_tr`.
+
+| Purpose letter | Meaning |
+|---|---|
+| `t` | Transparent — no background pixels drawn |
+| `m` | Monospace — fixed glyph width |
+| `h` | Common height only |
+| `8` | Every glyph fits an 8x8 box |
+
+| Charset letter | Meaning |
+|---|---|
+| `r` | Reduced — ASCII 32–127 (most common) |
+| `f` | Full — up to 256 glyphs, adds accented letters |
+| `n` | Numbers only, plus date/time symbols (clocks, counters) |
+| `u` | Uppercase only, ASCII 32–95 |
+| anything else | A specific custom set, e.g. `_cyrillic`, `_symbols`, `_greek` |
+
+So `_tr` = transparent + reduced ASCII, `_tn` = transparent + digits-only,
+`_mf` = monospace + full set, and so on. This is also explained directly in
+the tool's UI.
 
 ## Usage
 
-1. Download `u8g2_font_simulator.html` (or clone this repo).
+1. Download `u8g2_studio.html` (or clone this repo).
 2. Open the file in any modern browser. No server, no build step, no
    internet connection needed.
 3. Pick a font from the list (search, browse by family, or star favorites).
@@ -75,7 +103,7 @@ drawn on real hardware — not a substitute font or a rasterized approximation.
 ## Project structure
 
 ```
-u8g2_font_simulator.html   # the whole app: markup, decoder, font data, UI logic
+u8g2_studio.html   # the whole app: markup, decoder, font data, UI logic
 ```
 
 Everything lives in one file on purpose — download it once, and it keeps
