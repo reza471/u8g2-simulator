@@ -297,6 +297,12 @@
     <div id="objTextRow">
       <label>Text string (uses the font selected on the left)</label>
       <input type="text" id="objText" value="Hello">
+      <label style="margin-top:6px;">Alignment (relative to x)</label>
+      <select id="objAlign">
+        <option value="left">Left</option>
+        <option value="center">Center</option>
+        <option value="right">Right</option>
+      </select>
     </div>
     <div class="row">
       <div><label id="lbl0">x0</label><input type="text" id="p0" value="0"></div>
@@ -3074,6 +3080,28 @@ function renderShapeList() {
         if (U8G2_FONT_DATA[fontInput.value]) { s.font = fontInput.value; render(); }
       });
 
+      const alignSelect = document.createElement('select');
+      alignSelect.style.width = '62px';
+      alignSelect.style.fontSize = '11px';
+      alignSelect.style.padding = '3px 2px';
+      alignSelect.style.background = '#161a0e';
+      alignSelect.style.border = '1px solid var(--line)';
+      alignSelect.style.color = 'var(--text)';
+      alignSelect.style.borderRadius = '3px';
+      alignSelect.title = 'Text alignment relative to x';
+      [['left', 'Left'], ['center', 'Center'], ['right', 'Right']].forEach(([val, label]) => {
+        const opt = document.createElement('option');
+        opt.value = val;
+        opt.textContent = label;
+        if ((s.align || 'left') === val) opt.selected = true;
+        alignSelect.appendChild(opt);
+      });
+      alignSelect.addEventListener('change', () => {
+        pushUndo();
+        s.align = alignSelect.value;
+        render();
+      });
+
       // clicking into any field of this row "selects" it: font-list clicks then target this object
       [textInput, xInput, yInput, fontInput].forEach(inp => {
         inp.addEventListener('focus', () => {
@@ -3087,6 +3115,7 @@ function renderShapeList() {
       row.appendChild(xInput);
       row.appendChild(yInput);
       row.appendChild(fontInput);
+      row.appendChild(alignSelect);
     } else {
       const span = document.createElement('span');
       span.textContent = describeShape(s);
@@ -3143,8 +3172,9 @@ document.getElementById('addShapeBtn').addEventListener('click', () => {
   if (type === 'text') {
     const text = document.getElementById('objText').value || '';
     if (!text) return;
+    const align = document.getElementById('objAlign').value || 'left';
     pushUndo();
-    shapes.push({ type, p0, p1, p2: 0, p3: 0, text, font: activeFontName });
+    shapes.push({ type, p0, p1, p2: 0, p3: 0, text, font: activeFontName, align });
   } else {
     const p2 = parseInt(document.getElementById('p2').value || '0', 10);
     const p3 = parseInt(document.getElementById('p3').value || '0', 10);
@@ -3214,11 +3244,19 @@ function drawCircle(buf, xc, yc, r) {
   }
 }
 
+function textDrawX(s, width) {
+  if (s.align === 'center') return s.p0 - Math.round(width / 2);
+  if (s.align === 'right') return s.p0 - width;
+  return s.p0; // 'left' (default)
+}
+
 function drawShape(buf, s) {
   if (s.type === 'text') {
     const f = getFont(U8G2_FONT_DATA[s.font] ? s.font : activeFontName);
+    const width = f.getStringWidth(s.text);
+    const drawX = textDrawX(s, width);
     const setPixel = (x, y) => setPx(buf, x, y, 1);
-    f.renderLine(s.text, s.p0, s.p1, setPixel);
+    f.renderLine(s.text, drawX, s.p1, setPixel);
   }
   else if (s.type === 'line') drawLine(buf, s.p0, s.p1, s.p2, s.p3);
   else if (s.type === 'frame') drawFrame(buf, s.p0, s.p1, s.p2, s.p3);
@@ -3264,8 +3302,9 @@ function shapeContainsPoint(s, x, y) {
   if (s.type === 'text') {
     const f = getFont(U8G2_FONT_DATA[s.font] ? s.font : activeFontName);
     const w = f.getStringWidth(s.text);
+    const drawX = textDrawX(s, w);
     const top = s.p1 - f.ascent_A - pad, bottom = s.p1 - f.descent_g + pad;
-    const left = s.p0 - pad, right = s.p0 + w + pad;
+    const left = drawX - pad, right = drawX + w + pad;
     return x >= left && x <= right && y >= top && y <= bottom;
   }
   if (s.type === 'pixel') {
