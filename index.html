@@ -297,12 +297,8 @@
     <div id="objTextRow">
       <label>Text string (uses the font selected on the left)</label>
       <input type="text" id="objText" value="Hello">
-      <label style="margin-top:6px;">Alignment (relative to x)</label>
-      <select id="objAlign">
-        <option value="left">Left</option>
-        <option value="center">Center</option>
-        <option value="right">Right</option>
-      </select>
+      <label style="margin-top:6px;">Alignment for new object</label>
+      <div id="objAlignToolbar" style="display:flex; gap:8px;"></div>
     </div>
     <div class="row">
       <div><label id="lbl0">x0</label><input type="text" id="p0" value="0"></div>
@@ -2987,6 +2983,82 @@ function renderPagesList() {
 renderPagesList();
 document.getElementById('addPageBtn').addEventListener('click', addPage);
 
+// ---------------- Word-style alignment icon toolbars ----------------
+function hAlignIcon(kind) {
+  const box = document.createElement('div');
+  box.style.display = 'flex';
+  box.style.flexDirection = 'column';
+  box.style.justifyContent = 'center';
+  box.style.gap = '2px';
+  box.style.width = '100%';
+  box.style.height = '100%';
+  box.style.alignItems = kind === 'left' ? 'flex-start' : kind === 'right' ? 'flex-end' : 'center';
+  ['100%', '65%', '85%'].forEach(w => {
+    const bar = document.createElement('div');
+    bar.style.height = '2px';
+    bar.style.width = w;
+    bar.style.background = 'currentColor';
+    bar.style.borderRadius = '1px';
+    box.appendChild(bar);
+  });
+  return box;
+}
+function vAlignIcon(kind) {
+  const box = document.createElement('div');
+  box.style.display = 'flex';
+  box.style.flexDirection = 'row';
+  box.style.justifyContent = 'center';
+  box.style.gap = '2px';
+  box.style.width = '100%';
+  box.style.height = '100%';
+  box.style.alignItems = kind === 'top' ? 'flex-start' : kind === 'bottom' ? 'flex-end' : 'center';
+  ['100%', '65%', '85%'].forEach(h => {
+    const bar = document.createElement('div');
+    bar.style.width = '2px';
+    bar.style.height = h;
+    bar.style.background = 'currentColor';
+    bar.style.borderRadius = '1px';
+    box.appendChild(bar);
+  });
+  return box;
+}
+const H_ALIGN_OPTIONS = [
+  { value: 'left', label: 'Align left' },
+  { value: 'center', label: 'Align center' },
+  { value: 'right', label: 'Align right' },
+];
+const V_ALIGN_OPTIONS = [
+  { value: 'top', label: 'Align top' },
+  { value: 'middle', label: 'Align middle' },
+  { value: 'bottom', label: 'Align bottom' },
+];
+function buildAlignGroup(current, options, iconBuilder, onPick) {
+  const group = document.createElement('div');
+  group.style.display = 'flex';
+  group.style.gap = '2px';
+  options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.title = opt.label;
+    const active = current === opt.value;
+    btn.style.width = '22px';
+    btn.style.height = '18px';
+    btn.style.display = 'flex';
+    btn.style.alignItems = 'center';
+    btn.style.justifyContent = 'center';
+    btn.style.padding = '2px';
+    btn.style.cursor = 'pointer';
+    btn.style.color = active ? 'var(--accent)' : 'var(--muted)';
+    btn.style.background = active ? '#1b1e16' : '#0f110b';
+    btn.style.border = '1px solid ' + (active ? 'var(--accent)' : 'var(--line)');
+    btn.style.borderRadius = '3px';
+    btn.appendChild(iconBuilder(opt.value));
+    btn.addEventListener('click', () => onPick(opt.value));
+    group.appendChild(btn);
+  });
+  return group;
+}
+
 const fieldLabels = {
   text:   ['x','y','',''],
   line:   ['x0','y0','x1','y1'],
@@ -3010,6 +3082,16 @@ function updateFieldLabels() {
 }
 document.getElementById('shapeType').addEventListener('change', updateFieldLabels);
 updateFieldLabels();
+
+let newTextAlign = 'left';
+let newTextValign = 'middle';
+function renderObjAlignToolbar() {
+  const el = document.getElementById('objAlignToolbar');
+  el.innerHTML = '';
+  el.appendChild(buildAlignGroup(newTextAlign, H_ALIGN_OPTIONS, hAlignIcon, (v) => { newTextAlign = v; renderObjAlignToolbar(); }));
+  el.appendChild(buildAlignGroup(newTextValign, V_ALIGN_OPTIONS, vAlignIcon, (v) => { newTextValign = v; renderObjAlignToolbar(); }));
+}
+renderObjAlignToolbar();
 
 function describeShape(s) {
   if (s.type === 'text') {
@@ -3080,27 +3162,36 @@ function renderShapeList() {
         if (U8G2_FONT_DATA[fontInput.value]) { s.font = fontInput.value; render(); }
       });
 
-      const alignSelect = document.createElement('select');
-      alignSelect.style.width = '62px';
-      alignSelect.style.fontSize = '11px';
-      alignSelect.style.padding = '3px 2px';
-      alignSelect.style.background = '#161a0e';
-      alignSelect.style.border = '1px solid var(--line)';
-      alignSelect.style.color = 'var(--text)';
-      alignSelect.style.borderRadius = '3px';
-      alignSelect.title = 'Text alignment relative to x';
-      [['left', 'Left'], ['center', 'Center'], ['right', 'Right']].forEach(([val, label]) => {
-        const opt = document.createElement('option');
-        opt.value = val;
-        opt.textContent = label;
-        if ((s.align || 'left') === val) opt.selected = true;
-        alignSelect.appendChild(opt);
-      });
-      alignSelect.addEventListener('change', () => {
+      const hGroup = buildAlignGroup(s.align || 'left', H_ALIGN_OPTIONS, hAlignIcon, (v) => {
         pushUndo();
-        s.align = alignSelect.value;
+        s.align = v;
+        renderShapeList();
         render();
       });
+
+      const vGroup = buildAlignGroup(s.valign || 'middle', V_ALIGN_OPTIONS, vAlignIcon, (v) => {
+        pushUndo();
+        s.valign = v;
+        renderShapeList();
+        render();
+      });
+
+      const centerBtn = document.createElement('button');
+      centerBtn.textContent = '\u2316';
+      btnStyle(centerBtn, 'var(--accent)');
+      centerBtn.title = 'Snap to screen using the alignment buttons above (ignores current x/y)';
+      centerBtn.onclick = () => {
+        pushUndo();
+        const f = getFont(U8G2_FONT_DATA[s.font] ? s.font : activeFontName);
+        const align = s.align || 'left';
+        const valign = s.valign || 'middle';
+        s.p0 = align === 'left' ? 0 : align === 'right' ? W : Math.round(W / 2);
+        if (valign === 'top') s.p1 = f.ascent_A;
+        else if (valign === 'bottom') s.p1 = H + f.descent_g;
+        else s.p1 = Math.round(H / 2 + (f.ascent_A + f.descent_g) / 2);
+        renderShapeList();
+        render();
+      };
 
       // clicking into any field of this row "selects" it: font-list clicks then target this object
       [textInput, xInput, yInput, fontInput].forEach(inp => {
@@ -3115,7 +3206,9 @@ function renderShapeList() {
       row.appendChild(xInput);
       row.appendChild(yInput);
       row.appendChild(fontInput);
-      row.appendChild(alignSelect);
+      row.appendChild(hGroup);
+      row.appendChild(vGroup);
+      row.appendChild(centerBtn);
     } else {
       const span = document.createElement('span');
       span.textContent = describeShape(s);
@@ -3172,9 +3265,10 @@ document.getElementById('addShapeBtn').addEventListener('click', () => {
   if (type === 'text') {
     const text = document.getElementById('objText').value || '';
     if (!text) return;
-    const align = document.getElementById('objAlign').value || 'left';
+    const align = newTextAlign;
+    const valign = newTextValign;
     pushUndo();
-    shapes.push({ type, p0, p1, p2: 0, p3: 0, text, font: activeFontName, align });
+    shapes.push({ type, p0, p1, p2: 0, p3: 0, text, font: activeFontName, align, valign });
   } else {
     const p2 = parseInt(document.getElementById('p2').value || '0', 10);
     const p3 = parseInt(document.getElementById('p3').value || '0', 10);
