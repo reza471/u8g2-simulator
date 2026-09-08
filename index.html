@@ -276,6 +276,7 @@
       <input type="checkbox" id="favOnly">
       <label style="margin:0">&#9733; Favorites only</label>
     </div>
+    <select id="typeFilters"></select>
     <div style="font-size:10px;color:var(--muted);">
       <span id="matchCount">-</span> fonts match
     </div>
@@ -2757,11 +2758,30 @@ const matchCountEl = document.getElementById('matchCount');
 const favOnlyEl = document.getElementById('favOnly');
 let currentMatches = [];
 
+// ---------------- type (charset/purpose) filter, built from what's actually present ----------------
+let typeFilter = null; // null = All
+const typeFiltersEl = document.getElementById('typeFilters');
+(function buildTypeFilters() {
+  const labels = Array.from(new Set(U8G2_FONT_NAMES.map(suffixLabel))).sort();
+  const all = ['All'].concat(labels);
+  all.forEach(label => {
+    const opt = document.createElement('option');
+    opt.value = label;
+    opt.textContent = label === 'All' ? 'All types' : label;
+    typeFiltersEl.appendChild(opt);
+  });
+  typeFiltersEl.addEventListener('change', () => {
+    typeFilter = (typeFiltersEl.value === 'All') ? null : typeFiltersEl.value;
+    buildFontList(document.getElementById('search').value);
+  });
+})();
+
 function buildFontList(filter) {
   const f = filter.trim().toLowerCase();
   let matches = f ? U8G2_FONT_NAMES.filter(n => n.toLowerCase().includes(f)) : U8G2_FONT_NAMES.slice();
   const favOnly = favOnlyEl && favOnlyEl.checked;
   if (favOnly) matches = matches.filter(n => favorites.has(n));
+  if (typeFilter) matches = matches.filter(n => suffixLabel(n) === typeFilter);
 
   const grouping = !f && !favOnly; // only group when browsing the full unfiltered list
   if (grouping) {
@@ -2772,7 +2792,7 @@ function buildFontList(filter) {
     });
   }
 
-  currentMatches = matches.slice(0, 500);
+  currentMatches = matches; // render every match — 2043 rows is fine for a browser
   fontListEl.innerHTML = '';
   let lastFamily = null;
   currentMatches.forEach(name => {
@@ -2840,7 +2860,7 @@ function buildFontList(filter) {
     });
     fontListEl.appendChild(item);
   });
-  matchCountEl.textContent = matches.length + (matches.length > 500 ? ' (showing first 500)' : '');
+  matchCountEl.textContent = matches.length;
 }
 buildFontList('');
 buildFavList();
