@@ -38,9 +38,65 @@
   }
   .stage{
     display:flex;
+    flex-direction:row;
+    align-items:flex-start;
+    justify-content:center;
+    gap:18px;
+    margin-bottom:28px;
+    flex-wrap:wrap;
+  }
+  .stage-lcd-col{
+    display:flex;
     flex-direction:column;
     align-items:center;
-    margin-bottom:28px;
+  }
+  .pages-panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:10px;
+    width:160px;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    max-height:340px;
+  }
+  .pages-panel .card-title{margin:0 0 4px 2px;}
+  #pagesList{
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+    overflow-y:auto;
+    max-height:260px;
+  }
+  .page-item{
+    display:flex;
+    align-items:center;
+    gap:4px;
+    background:#0f110b;
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:5px 6px;
+    cursor:pointer;
+  }
+  .page-item.active{border-color:var(--accent);}
+  .page-item .page-name{
+    flex:1;
+    font-size:11px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    color:var(--text);
+  }
+  .page-item.active .page-name{color:var(--accent);}
+  .page-item button{
+    background:transparent;
+    border:none;
+    color:var(--muted);
+    cursor:pointer;
+    font-size:12px;
+    padding:0 2px;
+    flex:0 0 auto;
   }
   .lcd-wrap{
     background:linear-gradient(180deg,#2b2f22,#181a13);
@@ -48,6 +104,19 @@
     border-radius:8px;
     padding:22px;
     box-shadow:0 0 0 1px #000 inset, 0 8px 24px rgba(0,0,0,0.5);
+    position:relative;
+  }
+  #mouseCoord{
+    position:absolute;
+    bottom:6px;
+    right:8px;
+    font-size:10px;
+    color:var(--muted);
+    background:rgba(0,0,0,0.55);
+    padding:2px 6px;
+    border-radius:3px;
+    pointer-events:none;
+    letter-spacing:0.5px;
   }
   #lcd{
     display:block;
@@ -155,10 +224,18 @@
 <div class="sub">Real u8g2 bitmap fonts, decoded pixel-exact &middot; fully offline</div>
 
 <div class="stage">
-  <div class="lcd-wrap">
-    <canvas id="lcd" width="128" height="64"></canvas>
+  <div class="stage-lcd-col">
+    <div class="lcd-wrap">
+      <canvas id="lcd" width="128" height="64"></canvas>
+      <div id="mouseCoord">-, -</div>
+    </div>
+    <div class="lcd-label">SSD1306 / u8g2 style preview</div>
   </div>
-  <div class="lcd-label">SSD1306 / u8g2 style preview</div>
+  <div class="pages-panel">
+    <div class="card-title">Pages</div>
+    <div id="pagesList"></div>
+    <button id="addPageBtn" class="fontbtn" style="text-align:center;">+ New page</button>
+  </div>
 </div>
 
 <div class="cards">
@@ -191,6 +268,9 @@
 
   <div class="card">
     <div class="card-title">Fonts (2043 built in)</div>
+    <div class="card-title" style="margin-top:0;">Favorites</div>
+    <div id="favList" style="min-height:34px;max-height:110px;overflow-y:auto;border:1px solid var(--line);border-radius:3px;background:#0f110b;"></div>
+
     <input type="text" id="search" placeholder="Filter fonts by name...">
     <div class="toggle">
       <input type="checkbox" id="favOnly">
@@ -245,8 +325,8 @@
     <button id="clearPixelsBtn" class="fontbtn" style="text-align:center;">Clear manual pixels</button>
 
     <div class="row" style="margin-top:6px;">
-      <button id="saveBtn" class="fontbtn" style="text-align:center;">Save page</button>
-      <button id="loadBtn" class="fontbtn" style="text-align:center;">Load page</button>
+      <button id="saveBtn" class="fontbtn" style="text-align:center;">Save project</button>
+      <button id="loadBtn" class="fontbtn" style="text-align:center;">Load project</button>
     </div>
     <input type="file" id="loadFileInput" accept=".json" style="display:none;">
   </div>
@@ -260,6 +340,24 @@
   Source: <a href="https://github.com/olikraus/u8g2" target="_blank">github.com/olikraus/u8g2</a>.
   Use the name shown under "Font:" directly in your code, e.g.
   <b>u8g2.setFont(&lt;name&gt;);</b>
+  <br><br>
+  The small tag next to each font name (ASCII, Full, Digits, Mono ASCII...)
+  tells you at a glance what characters it covers.
+  <br><br>
+  <b>What the letters at the end of a font name mean</b> &mdash;
+  a name is <code>&lt;family&gt;&lt;size&gt;_&lt;purpose&gt;&lt;charset&gt;</code>:
+  <br>Purpose: <b>t</b>=transparent (no background drawn) &middot;
+  <b>m</b>=monospace (fixed width) &middot;
+  <b>h</b>=common height only &middot;
+  <b>8</b>=fits an 8&times;8 box.
+  <br>Charset: <b>r</b>=reduced, ASCII 32&ndash;127 &middot;
+  <b>f</b>=full, up to 256 glyphs (adds accents) &middot;
+  <b>n</b>=numbers + date/time symbols only &middot;
+  <b>u</b>=uppercase only (32&ndash;95) &middot;
+  anything else (<b>_cyrillic</b>, <b>_symbols</b>, <b>_greek</b>...) is a specific custom set.
+  <br>So <b>_tr</b> = transparent + reduced ASCII (most common),
+  <b>_tn</b> = transparent + digits-only (clocks/counters),
+  <b>_mf</b> = monospace + full set, and so on.
 </div>
 
 <script>
@@ -2529,6 +2627,69 @@ function persistFavorites() {
   catch (e) { /* ignore (e.g. file:// restrictions) */ }
 }
 
+const favListEl = document.getElementById('favList');
+function buildFavList() {
+  const names = Array.from(favorites).sort();
+  favListEl.innerHTML = '';
+  if (names.length === 0) {
+    const empty = document.createElement('div');
+    empty.textContent = 'No favorites yet \u2014 click \u2606 next to a font below.';
+    empty.style.padding = '6px 8px';
+    empty.style.fontSize = '10px';
+    empty.style.color = 'var(--muted)';
+    favListEl.appendChild(empty);
+    return;
+  }
+  names.forEach(name => {
+    const item = document.createElement('div');
+    item.dataset.name = name;
+    item.style.padding = '5px 8px';
+    item.style.fontSize = '11px';
+    item.style.cursor = 'pointer';
+    item.style.borderBottom = '1px solid var(--line)';
+    item.style.whiteSpace = 'nowrap';
+    item.style.overflow = 'hidden';
+    item.style.textOverflow = 'ellipsis';
+    item.style.display = 'flex';
+    item.style.alignItems = 'center';
+    item.style.gap = '6px';
+    if (name === activeFontName) {
+      item.style.background = '#161a0e';
+      item.style.color = 'var(--accent)';
+    }
+
+    const star = document.createElement('span');
+    star.textContent = '\u2605';
+    star.style.color = '#e0c34a';
+    star.style.cursor = 'pointer';
+    star.style.flex = '0 0 auto';
+    star.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      favorites.delete(name);
+      persistFavorites();
+      buildFavList();
+      buildFontList(document.getElementById('search').value);
+    });
+
+    const label = document.createElement('span');
+    label.textContent = name;
+    label.style.overflow = 'hidden';
+    label.style.textOverflow = 'ellipsis';
+
+    item.appendChild(star);
+    item.appendChild(label);
+    appendSuffixBadge(item, label, name);
+    item.addEventListener('click', () => {
+      activeFontName = name;
+      applyFontToSelectedText(name);
+      buildFavList();
+      buildFontList(document.getElementById('search').value);
+      render();
+    });
+    favListEl.appendChild(item);
+  });
+}
+
 // ---------------- family grouping ----------------
 const KNOWN_SUFFIXES = new Set(['tr','tf','tn','te','t','mn','mr','mf','me','mu','tu','all','symbol','symbols',
   'cyrillic','japanese1','japanese2','japanese3','chinese1','chinese2','chinese3',
@@ -2554,6 +2715,42 @@ const fontDatalist = document.createElement('datalist');
 fontDatalist.id = 'fontDatalist';
 fontDatalist.innerHTML = U8G2_FONT_NAMES.map(n => '<option value="' + n + '">').join('');
 document.body.appendChild(fontDatalist);
+
+// ---------------- short at-a-glance suffix labels ----------------
+const SUFFIX_LABELS = {
+  tr: 'ASCII', tf: 'Full', tn: 'Digits', tu: 'Upper',
+  mr: 'Mono ASCII', mf: 'Mono Full', mn: 'Mono Digits', mu: 'Mono Upper',
+  te: 'Ext', me: 'Mono Ext',
+  hr: 'ASCII', hf: 'Full',
+  '8r': '8x8 ASCII', '8f': '8x8 Full', '8n': '8x8 Digits', '8u': '8x8 Upper',
+  all: 'All glyphs',
+  symbol: 'Symbols', symbols: 'Symbols',
+  cyrillic: 'Cyrillic', greek: 'Greek', arabic: 'Arabic', hebrew: 'Hebrew',
+  chinese1: 'Chinese', chinese2: 'Chinese', chinese3: 'Chinese',
+  japanese1: 'Japanese', japanese2: 'Japanese', japanese3: 'Japanese',
+  korean1: 'Korean', korean2: 'Korean',
+  gb2312: 'GB2312', gb2312a: 'GB2312', gb2312b: 'GB2312',
+};
+function suffixLabel(name) {
+  const core = name.startsWith('u8g2_font_') ? name.slice(10) : name;
+  const parts = core.split('_');
+  const last = parts[parts.length - 1];
+  if (SUFFIX_LABELS[last]) return SUFFIX_LABELS[last];
+  return last ? last.toUpperCase() : '';
+}
+function appendSuffixBadge(item, label, name) {
+  label.style.flex = '1';
+  const badge = document.createElement('span');
+  badge.textContent = suffixLabel(name);
+  badge.style.flex = '0 0 auto';
+  badge.style.fontSize = '9px';
+  badge.style.color = 'var(--muted)';
+  badge.style.background = '#1b1e16';
+  badge.style.border = '1px solid var(--line)';
+  badge.style.borderRadius = '3px';
+  badge.style.padding = '1px 4px';
+  item.appendChild(badge);
+}
 
 const fontListEl = document.getElementById('fontList');
 const matchCountEl = document.getElementById('matchCount');
@@ -2621,6 +2818,7 @@ function buildFontList(filter) {
       ev.stopPropagation();
       if (favorites.has(name)) favorites.delete(name); else favorites.add(name);
       persistFavorites();
+      buildFavList();
       buildFontList(document.getElementById('search').value);
     });
 
@@ -2631,6 +2829,7 @@ function buildFontList(filter) {
 
     item.appendChild(star);
     item.appendChild(label);
+    appendSuffixBadge(item, label, name);
 
     item.addEventListener('click', () => {
       activeFontName = name;
@@ -2644,6 +2843,7 @@ function buildFontList(filter) {
   matchCountEl.textContent = matches.length + (matches.length > 500 ? ' (showing first 500)' : '');
 }
 buildFontList('');
+buildFavList();
 
 function applyFontToSelectedText(name) {
   if (selectedTextIdx !== null && shapes[selectedTextIdx] && shapes[selectedTextIdx].type === 'text') {
@@ -2674,7 +2874,82 @@ fontListEl.addEventListener('keydown', (e) => {
 });
 
 // ---------------- drawable objects ----------------
-let shapes = []; // {type, p0,p1,p2,p3}
+// ---------------- pages / project model ----------------
+let pages = [{ name: 'Page 1', shapes: [], manualOverrides: new Map() }];
+let currentPageIndex = 0;
+let shapes = pages[currentPageIndex].shapes; // {type, p0,p1,p2,p3} — same array reference as the active page's shapes
+
+function switchToPage(idx) {
+  if (idx < 0 || idx >= pages.length) return;
+  currentPageIndex = idx;
+  shapes = pages[idx].shapes;
+  manualOverrides = pages[idx].manualOverrides;
+  selectedTextIdx = null;
+  renderShapeList();
+  renderPagesList();
+  render();
+}
+
+function addPage() {
+  pages.push({ name: 'Page ' + (pages.length + 1), shapes: [], manualOverrides: new Map() });
+  switchToPage(pages.length - 1);
+}
+
+function deletePage(idx) {
+  if (pages.length <= 1) return; // always keep at least one page
+  pages.splice(idx, 1);
+  switchToPage(Math.min(idx, pages.length - 1));
+}
+
+function renderPagesList() {
+  const listEl = document.getElementById('pagesList');
+  listEl.innerHTML = '';
+  pages.forEach((p, idx) => {
+    const item = document.createElement('div');
+    item.className = 'page-item' + (idx === currentPageIndex ? ' active' : '');
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'page-name';
+    nameSpan.textContent = p.name;
+    nameSpan.addEventListener('dblclick', (ev) => {
+      ev.stopPropagation();
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = p.name;
+      input.style.width = '100%';
+      input.style.fontSize = '11px';
+      input.style.background = '#161a0e';
+      input.style.border = '1px solid var(--accent)';
+      input.style.color = 'var(--text)';
+      input.style.borderRadius = '3px';
+      item.replaceChild(input, nameSpan);
+      input.focus();
+      input.select();
+      const commit = () => { p.name = input.value || p.name; renderPagesList(); };
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') commit();
+        if (e.key === 'Escape') renderPagesList();
+      });
+      input.addEventListener('blur', commit);
+    });
+
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '\u00d7';
+    delBtn.title = 'Delete page';
+    delBtn.style.visibility = pages.length > 1 ? 'visible' : 'hidden';
+    delBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      deletePage(idx);
+    });
+
+    item.appendChild(nameSpan);
+    item.appendChild(delBtn);
+    item.addEventListener('click', () => switchToPage(idx));
+    listEl.appendChild(item);
+  });
+}
+renderPagesList();
+document.getElementById('addPageBtn').addEventListener('click', addPage);
 
 const fieldLabels = {
   text:   ['x','y','',''],
@@ -2918,7 +3193,7 @@ function drawShape(buf, s) {
 }
 
 // ---------------- manual pixel drawing (click on LCD) ----------------
-let manualOverrides = new Map();
+let manualOverrides = pages[currentPageIndex].manualOverrides; // same Map reference as the active page's overrides
 let lastAutoBuf = null;
 let isPainting = false;
 let paintValue = 1;
@@ -2934,6 +3209,20 @@ function paintAt(x, y) {
   if (x < 0 || x >= W || y < 0 || y >= H) return;
   manualOverrides.set(x + ',' + y, paintValue);
 }
+
+// ---------------- live mouse coordinate readout ----------------
+const mouseCoordEl = document.getElementById('mouseCoord');
+lcd.addEventListener('mousemove', (e) => {
+  const { x, y } = canvasToCell(e);
+  if (x >= 0 && x < W && y >= 0 && y < H) {
+    mouseCoordEl.textContent = x + ', ' + y;
+  } else {
+    mouseCoordEl.textContent = '-, -';
+  }
+});
+lcd.addEventListener('mouseleave', () => {
+  mouseCoordEl.textContent = '-, -';
+});
 
 lcd.addEventListener('mousedown', (e) => {
   if (!document.getElementById('pixelMode').checked) return;
@@ -3033,13 +3322,17 @@ function render() {
 // ---------------- save / load workstation state ----------------
 function collectState() {
   return {
-    version: 2,
+    version: 3,
     W, H,
     grid: document.getElementById('grid').checked,
     border: document.getElementById('border').checked,
     font: activeFontName,
-    shapes: shapes,
-    manualOverrides: Array.from(manualOverrides.entries()),
+    currentPageIndex,
+    pages: pages.map(p => ({
+      name: p.name,
+      shapes: p.shapes,
+      manualOverrides: Array.from(p.manualOverrides.entries()),
+    })),
   };
 }
 
@@ -3051,12 +3344,31 @@ function applyState(state) {
   document.getElementById('grid').checked = !!state.grid;
   document.getElementById('border').checked = !!state.border;
   if (state.font && U8G2_FONT_DATA[state.font]) activeFontName = state.font;
-  shapes = Array.isArray(state.shapes) ? state.shapes : [];
-  manualOverrides = new Map(Array.isArray(state.manualOverrides) ? state.manualOverrides : []);
+
+  if (Array.isArray(state.pages) && state.pages.length > 0) {
+    pages = state.pages.map((p, i) => ({
+      name: p.name || ('Page ' + (i + 1)),
+      shapes: Array.isArray(p.shapes) ? p.shapes : [],
+      manualOverrides: new Map(Array.isArray(p.manualOverrides) ? p.manualOverrides : []),
+    }));
+  } else if (Array.isArray(state.shapes)) {
+    // backwards compatibility with older single-page save files (version 1-2)
+    pages = [{
+      name: 'Page 1',
+      shapes: state.shapes,
+      manualOverrides: new Map(Array.isArray(state.manualOverrides) ? state.manualOverrides : []),
+    }];
+  } else {
+    pages = [{ name: 'Page 1', shapes: [], manualOverrides: new Map() }];
+  }
+  currentPageIndex = Math.min(state.currentPageIndex || 0, pages.length - 1);
+  shapes = pages[currentPageIndex].shapes;
+  manualOverrides = pages[currentPageIndex].manualOverrides;
   selectedTextIdx = null;
 
   resizeCanvas();
   renderShapeList();
+  renderPagesList();
   buildFontList(document.getElementById('search').value);
   render();
 }
@@ -3072,7 +3384,7 @@ document.getElementById('saveBtn').addEventListener('click', () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'u8g2-simulator-state.json';
+  a.download = 'u8g2-simulator-project.json';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
